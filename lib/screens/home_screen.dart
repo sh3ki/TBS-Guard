@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../services/app_update_service.dart';
 import '../services/api_service.dart';
 import 'scan_truck_plate_screen.dart';
+import 'guard_queue_screen.dart';
 import 'login_screen.dart';
 
 /// Guard home shell. It intentionally has no menu actions yet.
@@ -46,7 +47,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final photos = await Permission.photos.status;
     final videos = await Permission.videos.status;
     final storage = await Permission.storage.status;
-    final fileAccess = photos.isGranted || videos.isGranted || storage.isGranted;
+    final fileAccess =
+        photos.isGranted || videos.isGranted || storage.isGranted;
     if (!mounted) return;
     setState(() {
       _statuses = {
@@ -56,15 +58,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Permission.videos: videos,
         Permission.storage: storage,
       };
-      _needsPermissions = !(camera.isGranted && microphone.isGranted && fileAccess);
+      _needsPermissions =
+          !(camera.isGranted && microphone.isGranted && fileAccess);
     });
   }
 
   Future<void> _requestPermissions() async {
-    await [Permission.camera, Permission.microphone, Permission.photos, Permission.videos, Permission.storage].request();
+    await [
+      Permission.camera,
+      Permission.microphone,
+      Permission.photos,
+      Permission.videos,
+      Permission.storage
+    ].request();
     await _checkPermissions();
     if (mounted && _needsPermissions) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enable required permissions in Settings')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Please enable required permissions in Settings')));
     }
   }
 
@@ -87,10 +97,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           builder: (dialogContext) => AlertDialog(
             backgroundColor: const Color(0xFFDC2626),
             icon: const Icon(Icons.block, color: Colors.white, size: 52),
-            title: const Text('Serving Capacity Full', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-            content: const Text('Serving capacity is full. Please wait until a truck is completed.', style: TextStyle(color: Colors.white)),
+            title: const Text('Serving Capacity Full',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+            content: const Text(
+                'Serving capacity is full. Please wait until a truck is completed.',
+                style: TextStyle(color: Colors.white)),
             actions: [
-              TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('CLOSE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('CLOSE',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold))),
             ],
           ),
         );
@@ -100,7 +118,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // If the capacity service is temporarily unavailable, keep the scan action usable.
     }
     if (!mounted) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ScanTruckPlateScreen()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const ScanTruckPlateScreen()));
   }
 
   @override
@@ -115,7 +134,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         elevation: 0,
         title: const Text(
           'TBS Container Yard',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
+          style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
         ),
         actions: [
           Padding(
@@ -124,8 +144,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: FutureBuilder<String>(
                 future: _installedVersionFuture,
                 builder: (context, snapshot) => Text(
-                  snapshot.hasData && snapshot.data!.isNotEmpty ? 'v${snapshot.data}' : 'Version unavailable',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.white70),
+                  snapshot.hasData && snapshot.data!.isNotEmpty
+                      ? 'v${snapshot.data}'
+                      : 'Version unavailable',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white70),
                 ),
               ),
             ),
@@ -153,18 +178,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Permissions required', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                          Text('Permissions required',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87)),
                           SizedBox(height: 6),
-                          Text('The app needs Camera, Microphone and File access to work properly. Please grant permissions.', style: TextStyle(fontSize: 13)),
+                          Text(
+                              'The app needs Camera, Microphone and File access to work properly. Please grant permissions.',
+                              style: TextStyle(fontSize: 13)),
                         ],
                       ),
                     ),
                     const SizedBox(width: 8),
                     Column(
                       children: [
-                        ElevatedButton(onPressed: _requestPermissions, style: ElevatedButton.styleFrom(backgroundColor: Colors.orange), child: const Text('Grant')),
+                        ElevatedButton(
+                            onPressed: _requestPermissions,
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange),
+                            child: const Text('Grant')),
                         const SizedBox(height: 6),
-                        TextButton(onPressed: openAppSettings, child: const Text('Open Settings')),
+                        TextButton(
+                            onPressed: openAppSettings,
+                            child: const Text('Open Settings')),
                       ],
                     ),
                   ],
@@ -175,7 +211,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2))
+                ],
               ),
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -183,17 +224,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Container(
                     width: 48,
                     height: 48,
-                    decoration: BoxDecoration(color: const Color(0xFF3E9AF4), borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(Icons.person, color: Colors.white, size: 24),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFF3E9AF4),
+                        borderRadius: BorderRadius.circular(8)),
+                    child:
+                        const Icon(Icons.person, color: Colors.white, size: 24),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(fullName != null && fullName.isNotEmpty ? fullName : username, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF31393C))),
+                        Text(
+                            fullName != null && fullName.isNotEmpty
+                                ? fullName
+                                : username,
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF31393C))),
                         const SizedBox(height: 2),
-                        Text(username, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                        Text(username,
+                            style: TextStyle(
+                                fontSize: 13, color: Colors.grey[600])),
                       ],
                     ),
                   ),
@@ -211,7 +264,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     subtitle: 'View the truck queue',
                     color: const Color(0xFF3E9AF4),
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const GuardPlaceholderScreen(title: 'QUEUE')),
+                      MaterialPageRoute(
+                          builder: (_) => const GuardQueueScreen()),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -230,8 +284,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: _logout,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[300], padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                child: const Text('LOGOUT', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF31393C))),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[300],
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8))),
+                child: const Text('LOGOUT',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF31393C))),
               ),
             ),
             const SizedBox(height: 16),
@@ -259,7 +321,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(12),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))],
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2))
+            ],
           ),
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -267,7 +334,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Container(
                 width: 56,
                 height: 56,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.25), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Center(child: Icon(icon, color: Colors.white, size: 28)),
               ),
               const SizedBox(width: 16),
@@ -275,13 +344,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                    Text(label,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white)),
                     const SizedBox(height: 4),
-                    Text(subtitle, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: Colors.white)),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white)),
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
+              const Icon(Icons.arrow_forward_ios,
+                  color: Colors.white, size: 18),
             ],
           ),
         ),
@@ -300,7 +378,11 @@ class GuardPlaceholderScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF3E9AF4),
-        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+        title: Text(title,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: const SizedBox.expand(),
