@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/app_update_service.dart';
+import 'scan_truck_plate_screen.dart';
 import 'login_screen.dart';
 
 /// Guard home shell. It intentionally has no menu actions yet.
@@ -194,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     subtitle: 'Scan a truck plate number',
                     color: const Color(0xFF4CAF50),
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const GuardPlaceholderScreen(title: 'SCAN TRUCK PLATE')),
+                      MaterialPageRoute(builder: (_) => const ScanTruckPlateScreen()),
                     ),
                   ),
                 ],
