@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/app_update_service.dart';
+import '../services/api_service.dart';
 import 'scan_truck_plate_screen.dart';
 import 'login_screen.dart';
 
@@ -74,6 +75,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );
+  }
+
+  Future<void> _openScanScreen() async {
+    try {
+      final response = await ApiService.get('/guard/queue-capacity');
+      if (!mounted) return;
+      if (response.isSuccessCode && response.data['at_capacity'] == true) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: const Color(0xFFDC2626),
+            icon: const Icon(Icons.block, color: Colors.white, size: 52),
+            title: const Text('Serving Capacity Full', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            content: const Text('Serving capacity is full. Please wait until a truck is completed.', style: TextStyle(color: Colors.white)),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('CLOSE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+            ],
+          ),
+        );
+        return;
+      }
+    } catch (_) {
+      // If the capacity service is temporarily unavailable, keep the scan action usable.
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ScanTruckPlateScreen()));
   }
 
   @override
@@ -194,9 +221,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     label: 'SCAN TRUCK PLATE',
                     subtitle: 'Scan a truck plate number',
                     color: const Color(0xFF4CAF50),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ScanTruckPlateScreen()),
-                    ),
+                    onPressed: _openScanScreen,
                   ),
                 ],
               ),
