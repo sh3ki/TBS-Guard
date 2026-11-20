@@ -16,6 +16,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
+  // Temporary QA bypass for the Guard app. Set to false when real Guard
+  // account validation is ready.
+  static const bool _testingLoginBypass = true;
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -137,14 +140,15 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final auth = context.read<AuthProvider>();
-
     try {
       print('[LoginScreen] Login attempt with username: ${_usernameController.text.trim()}, rememberMe: $_rememberMe');
-      await auth.login(
-        _usernameController.text.trim(),
-        _passwordController.text,
-      );
+      if (!_testingLoginBypass) {
+        final auth = context.read<AuthProvider>();
+        await auth.login(
+          _usernameController.text.trim(),
+          _passwordController.text,
+        );
+      }
 
       // Save credentials if "Remember Me" is checked
       if (_rememberMe) {
