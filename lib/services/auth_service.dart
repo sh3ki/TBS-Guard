@@ -5,7 +5,7 @@ class AuthService {
   Future<UserModel> login(
       {required String username, required String password}) async {
     final response = await ApiService.post(
-      '/mobile/login',
+      '/guard/login',
       body: {
         'username': username,
         'password': password,
@@ -27,7 +27,7 @@ class AuthService {
     print('[AuthService] Logout request - Username: $username, UserId: $userId');
     
     final response = await ApiService.post(
-      '/mobile/logout',
+      '/guard/logout',
       token: token,
       body: {
         'username': username,
