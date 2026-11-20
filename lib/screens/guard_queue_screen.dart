@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import 'scan_truck_plate_screen.dart';
 
 class GuardQueueScreen extends StatefulWidget {
   const GuardQueueScreen({super.key});
@@ -26,35 +27,9 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
-    // Temporary visual preview data. Re-enable _loadQueue and polling when
-    // the queue API is ready for the production screen.
-    _queue = _demoQueue();
-    _loading = false;
+    _loadQueue();
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _loadQueue());
   }
-
-  Map<String, List<Map<String, dynamic>>> _demoQueue() => {
-        'waiting_in': List.generate(
-            10,
-            (index) => {
-                  'id': index + 1,
-                  'plate_no': 'IN${(1000 + index).toString()}',
-                  'direction': 'IN',
-                }),
-        'waiting_out': List.generate(
-            10,
-            (index) => {
-                  'id': index + 101,
-                  'plate_no': 'OUT${(2000 + index).toString()}',
-                  'direction': 'OUT',
-                }),
-        'serving': List.generate(
-            10,
-            (index) => {
-                  'id': index + 201,
-                  'plate_no': 'SRV${(3000 + index).toString()}',
-                  'direction': index.isEven ? 'IN' : 'OUT',
-                }),
-      };
 
   @override
   void dispose() {
@@ -82,6 +57,41 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     }
   }
 
+  Future<void> _openScanScreen() async {
+    try {
+      final response = await ApiService.get('/guard/queue-capacity');
+      if (!mounted) return;
+      if (response.isSuccessCode && response.data['at_capacity'] == true) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: const Color(0xFFDC2626),
+            icon: const Icon(Icons.block, color: Colors.white, size: 52),
+            title: const Text('Serving Capacity Full',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+            content: const Text(
+                'Serving capacity is full. Please wait until a truck is completed.',
+                style: TextStyle(color: Colors.white)),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('CLOSE',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold))),
+            ],
+          ),
+        );
+        return;
+      }
+    } catch (_) {
+      // Keep the scan action usable if the capacity check is unavailable.
+    }
+    if (!mounted) return;
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const ScanTruckPlateScreen()));
+  }
+
   List<Map<String, dynamic>> _entries(dynamic value) => value is List
       ? value
           .whereType<Map>()
@@ -100,6 +110,34 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w700)),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Center(
+              child: ElevatedButton.icon(
+                onPressed: _openScanScreen,
+                icon: const Icon(Icons.qr_code_scanner,
+                    color: Colors.white, size: 18),
+                label: const Text('SCAN',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(7)),
+                ),
+              ),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabs,
           isScrollable: false,
