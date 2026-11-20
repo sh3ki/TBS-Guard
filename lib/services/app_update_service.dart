@@ -54,7 +54,7 @@ class AppUpdateService {
   static AppUpdateInfo? deferredUpdate;
 
   static const _installerChannel = MethodChannel(
-    'com.tbs.mobile.tbs_mobile/apk_installer',
+    'com.tbs.mobile.tbs_guard/apk_installer',
   );
 
   static void deferUpdate(AppUpdateInfo updateInfo) {
@@ -77,7 +77,7 @@ class AppUpdateService {
   Future<AppUpdateInfo?> checkForUpdate() async {
     try {
       final currentVersion = await getInstalledVersion();
-      final response = await ApiService.get('/mobile/app-update');
+      final response = await ApiService.get('/mobile/app-update', query: const {'app': 'GUARD'});
       if (!response.isSuccessCode || response.data['success'] != true) {
         return null;
       }
@@ -100,7 +100,7 @@ class AppUpdateService {
     void Function(int received, int total)? onProgress,
   }) async {
     final directory = await getApplicationSupportDirectory();
-    final apkFile = File('${directory.path}/tbs_mobile_update.apk');
+    final apkFile = File('${directory.path}/tbs_guard_update.apk');
 
     if (await apkFile.exists()) {
       await apkFile.delete();
