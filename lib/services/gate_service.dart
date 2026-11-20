@@ -5,7 +5,7 @@ import 'api_service.dart';
 class GateService {
   Future<List<PreRecord>> getPendingList(String username) async {
     final response = await ApiService.post(
-      '/mobile/gateinout/list',
+      '/guard/gateinout/list',
       body: {'username': username},
     );
     if (!response.isSuccessCode || response.data['success'] != true) {
@@ -20,7 +20,7 @@ class GateService {
   }
 
   Future<List<LookupItem>> getClients(String username) async {
-    final response = await ApiService.get('/mobile/gateinout/clients');
+    final response = await ApiService.get('/guard/gateinout/clients');
     if (!response.isSuccessCode || response.data['success'] != true) {
       throw Exception(ApiService.extractMessage(response.data));
     }
@@ -33,7 +33,7 @@ class GateService {
 
   Future<List<LookupItem>> getStatusOptions(String username) async {
     final response =
-        await ApiService.get('/mobile/gateinout/status-options');
+        await ApiService.get('/guard/gateinout/status-options');
     print('[DEBUG] Raw Status API Response: ${response.data}');
     print('[DEBUG] Raw Status API Data: ${response.data['data']}');
     
@@ -54,7 +54,7 @@ class GateService {
 
   Future<List<LookupItem>> getSizeTypeOptions(String username) async {
     final response =
-        await ApiService.get('/mobile/gateinout/sizetype-options');
+        await ApiService.get('/guard/gateinout/sizetype-options');
     if (!response.isSuccessCode || response.data['success'] != true) {
       throw Exception(ApiService.extractMessage(response.data));
     }
@@ -67,7 +67,7 @@ class GateService {
 
   Future<List<LookupItem>> getLoadOptions(String username) async {
     final response =
-        await ApiService.get('/mobile/gateinout/load-options');
+        await ApiService.get('/guard/gateinout/load-options');
     if (!response.isSuccessCode || response.data['success'] != true) {
       throw Exception(ApiService.extractMessage(response.data));
     }
@@ -93,7 +93,7 @@ class GateService {
     String gateStatus = 'IN',
   }) async {
     final response = await ApiService.get(
-      '/mobile/gateinout/container-details',
+      '/guard/gateinout/container-details',
       query: {'username': username, 'container_no': containerNo, 'gate_status': gateStatus},
     );
 
@@ -109,7 +109,7 @@ class GateService {
     required String searchTerm,
   }) async {
     final response = await ApiService.get(
-      '/mobile/gateinout/available-containers',
+      '/guard/gateinout/available-containers',
       query: {'username': username, 'search': searchTerm},
     );
 
@@ -128,7 +128,7 @@ class GateService {
     required String clientHash,
   }) async {
     final response = await ApiService.post(
-      '/mobile/gateinout/check-container-in',
+      '/guard/gateinout/check-container-in',
       body: {
         'username': username,
         'cno': containerNo,
@@ -145,7 +145,7 @@ class GateService {
     required String hauler,
   }) async {
     final response = await ApiService.post(
-      '/mobile/gateinout/check-container-out',
+      '/guard/gateinout/check-container-out',
       body: {
         'username': username,
         'pno': plateNo,
@@ -161,7 +161,7 @@ class GateService {
     required String containerNo,
   }) async {
     final response = await ApiService.post(
-      '/mobile/gateinout/validate-container',
+      '/guard/gateinout/validate-container',
       body: {
         'username': username,
         'container_no': containerNo,
@@ -184,7 +184,7 @@ class GateService {
       ...payload,
     };
     final response = await ApiService.post(
-      '/mobile/gateinout/process-in',
+      '/guard/gateinout/process-in',
       body: body,
     );
 
@@ -205,7 +205,7 @@ class GateService {
       ...payload,
     };
     final response = await ApiService.post(
-      '/mobile/gateinout/process-out',
+      '/guard/gateinout/process-out',
       body: body,
     );
 
