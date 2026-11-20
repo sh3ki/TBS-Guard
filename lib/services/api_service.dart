@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -55,6 +56,21 @@ class ApiService {
       statusCode: response.statusCode,
       data: _decodeBody(response.body),
     );
+  }
+
+  static Future<ApiResponse> postMultipart(
+    String path, {
+    required File file,
+    String fieldName = 'image',
+    Map<String, String>? fields,
+  }) async {
+    final request = http.MultipartRequest('POST', AppConfig.uri(path));
+    request.headers['Accept'] = 'application/json';
+    request.fields.addAll(fields ?? const {});
+    request.files.add(await http.MultipartFile.fromPath(fieldName, file.path));
+    final streamed = await request.send().timeout(AppConfig.requestTimeout);
+    final response = await http.Response.fromStream(streamed);
+    return ApiResponse(statusCode: response.statusCode, data: _decodeBody(response.body));
   }
 
   static Map<String, dynamic> _decodeBody(String body) {
