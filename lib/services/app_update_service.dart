@@ -77,7 +77,7 @@ class AppUpdateService {
   Future<AppUpdateInfo?> checkForUpdate() async {
     try {
       final currentVersion = await getInstalledVersion();
-      final response = await ApiService.get('/mobile/app-update', query: const {'app': 'GUARD'});
+      final response = await ApiService.get('/guard/app-update');
       if (!response.isSuccessCode || response.data['success'] != true) {
         return null;
       }
