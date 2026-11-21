@@ -12,11 +12,17 @@ class UserModel {
   });
 
   factory UserModel.fromLoginResponse(Map<String, dynamic> json) {
-    final user = (json['user'] as Map<String, dynamic>? ?? const {});
+    // The mobile API nests the account under `user`, while older API
+    // responses returned the account fields at the top level. Accept both
+    // shapes so the menu profile is populated consistently.
+    final nestedUser = json['user'];
+    final user = nestedUser is Map
+        ? Map<String, dynamic>.from(nestedUser)
+        : json;
     return UserModel(
-      id: (user['id'] as num?)?.toInt() ?? 0,
-      username: (user['username'] ?? '').toString(),
-      fullName: (user['full_name'] ?? '').toString(),
+      id: _readInt(user, const ['id', 'user_id']),
+      username: _readString(user, const ['username', 'uname']),
+      fullName: _readString(user, const ['full_name', 'fullName', 'name']),
       token: (json['token'] ?? '').toString(),
     );
   }
@@ -32,10 +38,30 @@ class UserModel {
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      username: (json['username'] ?? '').toString(),
-      fullName: (json['fullName'] ?? '').toString(),
+      id: _readInt(json, const ['id', 'user_id']),
+      username: _readString(json, const ['username', 'uname']),
+      fullName: _readString(json, const ['fullName', 'full_name', 'name']),
       token: (json['token'] ?? '').toString(),
     );
+  }
+
+  static String _readString(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString();
+      }
+    }
+    return '';
+  }
+
+  static int _readInt(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value is num) return value.toInt();
+      final parsed = int.tryParse(value?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    return 0;
   }
 }
