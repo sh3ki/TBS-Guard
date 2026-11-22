@@ -63,9 +63,13 @@ class ApiService {
     required File file,
     String fieldName = 'image',
     Map<String, String>? fields,
+    String? token,
   }) async {
     final request = http.MultipartRequest('POST', AppConfig.uri(path));
     request.headers['Accept'] = 'application/json';
+    if (token != null && token.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
     request.fields.addAll(fields ?? const {});
     request.files.add(await http.MultipartFile.fromPath(fieldName, file.path));
     final streamed = await request.send().timeout(AppConfig.requestTimeout);
