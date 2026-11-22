@@ -270,7 +270,11 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
         return;
       }
       if (response.data['queue_updated'] == true) {
-        await _showMessage('Truck is Now Serving!', 'Plate ${response.data['plate_no'] ?? ''} was moved to Serving.');
+        await _showMessage(
+          'Truck is Now Serving!',
+          'Plate ${response.data['plate_no'] ?? ''} was moved to Serving.',
+          success: true,
+        );
       } else {
         await _showMessage('This Truck is not in Queue', 'Detected plate: ${response.data['plate_no'] ?? ''}');
       }
@@ -296,9 +300,8 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
     return samples.map((v) => math.pow(v - mean, 2).toDouble()).reduce((a, b) => a + b) / samples.length;
   }
 
-  Future<void> _showMessage(String title, String message, {Color? backgroundColor}) async {
+  Future<void> _showMessage(String title, String message, {Color? backgroundColor, bool success = false}) async {
     if (!mounted) return;
-    final success = title == 'Truck Plate Scanned Successful';
     final color = backgroundColor ?? (success ? const Color(0xFF16A34A) : const Color(0xFFDC2626));
     final icon = success ? Icons.check_circle : Icons.error;
     await showDialog<void>(
