@@ -7,8 +7,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+
+const _plateGuideAspectRatio = 2.7 / 1.5;
+const _captureMargin = .18;
 
 class ScanTruckPlateScreen extends StatefulWidget {
   const ScanTruckPlateScreen({super.key});
@@ -29,6 +34,7 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
   XFile? _captured;
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   int? _tiltRotationAngle;
+  String _scanAction = 'return';
 
   @override
   void initState() {
@@ -112,16 +118,40 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
     );
   }
 
+  Widget _actionTab(String label, String value, Color color) {
+    final selected = _scanAction == value;
+    return GestureDetector(
+      onTap: () => setState(() => _scanAction = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : color,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _capture() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized || _capturing) return;
     setState(() => _capturing = true);
     try {
       final captured = await controller.takePicture();
-      final image = await _rotateCapture(captured);
+      final landscapeTilt = _tiltRotationAngle == 90 || _tiltRotationAngle == -90;
+      final oriented = await _rotateCapture(captured);
+      final image = await _cropToGuide(oriented);
       if (!mounted) return;
       setState(() { _captured = image; _capturing = false; });
-      await _showPreview(image);
+      await _showPreview(image, landscapeTilt: landscapeTilt);
     } catch (_) {
       if (mounted) setState(() => _capturing = false);
       if (mounted) _showMessage('Capture failed', 'Please try capturing the plate again.');
@@ -143,7 +173,35 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
     return XFile(path);
   }
 
-  Future<void> _showPreview(XFile image) async {
+  Future<XFile> _cropToGuide(XFile source) async {
+    final decoded = img.decodeImage(await File(source.path).readAsBytes());
+    if (decoded == null) return source;
+
+    final sourceAspectRatio = decoded.width / decoded.height;
+    int cropWidth;
+    int cropHeight;
+    if (sourceAspectRatio >= _plateGuideAspectRatio) {
+      cropHeight = decoded.height;
+      cropWidth = (cropHeight * _plateGuideAspectRatio).round();
+    } else {
+      cropWidth = decoded.width;
+      cropHeight = (cropWidth / _plateGuideAspectRatio).round();
+    }
+    cropWidth = cropWidth.clamp(1, decoded.width).toInt();
+    cropHeight = cropHeight.clamp(1, decoded.height).toInt();
+    final cropped = img.copyCrop(
+      decoded,
+      x: (decoded.width - cropWidth) ~/ 2,
+      y: (decoded.height - cropHeight) ~/ 2,
+      width: cropWidth,
+      height: cropHeight,
+    );
+    final path = '${source.path}_guide_crop.jpg';
+    await File(path).writeAsBytes(img.encodeJpg(cropped, quality: 95));
+    return XFile(path);
+  }
+
+  Future<void> _showPreview(XFile image, {required bool landscapeTilt}) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -151,7 +209,19 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(image.path), fit: BoxFit.contain, height: MediaQuery.of(context).size.height * .55)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .55),
+                child: AspectRatio(
+                  aspectRatio: _plateGuideAspectRatio,
+          child: Stack(fit: StackFit.expand, children: [
+                    Image.file(File(image.path), fit: BoxFit.cover),
+            IgnorePointer(child: CustomPaint(painter: CapturePreviewGuidePainter(landscapeTilt: landscapeTilt, withdrawMode: _scanAction == 'withdraw'))),
+                  ]),
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
             Row(children: [
               Expanded(child: OutlinedButton(onPressed: () { Navigator.pop(dialogContext); setState(() => _captured = null); }, child: const Text('RETAKE'))),
@@ -181,8 +251,20 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
         await _showMessage('Image is blurred', 'Please retake the image with the plate steady and in focus.');
         return;
       }
-      final response = await ApiService.postMultipart('/guard/scan-truck-plate', file: file);
+      final response = await ApiService.postMultipart(
+        '/guard/scan-truck-plate',
+        file: file,
+        token: context.read<AuthProvider>().user?.token,
+        fields: {
+          'action': _scanAction,
+          'user_id': '${context.read<AuthProvider>().user?.id ?? 0}',
+        },
+      );
       if (!mounted) return;
+      if (response.data['wrong_queue'] == true) {
+        await _showMessage('Wrong Queue', ApiService.extractMessage(response.data), backgroundColor: Colors.orange.shade700);
+        return;
+      }
       if (!response.isSuccessCode || response.data['success'] != true) {
         await _showMessage('Scan failed', ApiService.extractMessage(response.data));
         return;
@@ -214,10 +296,10 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
     return samples.map((v) => math.pow(v - mean, 2).toDouble()).reduce((a, b) => a + b) / samples.length;
   }
 
-  Future<void> _showMessage(String title, String message) async {
+  Future<void> _showMessage(String title, String message, {Color? backgroundColor}) async {
     if (!mounted) return;
     final success = title == 'Truck Plate Scanned Successful';
-    final color = success ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+    final color = backgroundColor ?? (success ? const Color(0xFF16A34A) : const Color(0xFFDC2626));
     final icon = success ? Icons.check_circle : Icons.error;
     await showDialog<void>(
       context: context,
@@ -256,7 +338,23 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
             child: CameraPreview(controller),
           ),
         ))),
-        Positioned(top: 0, left: 0, right: 0, bottom: 168, child: IgnorePointer(child: CustomPaint(painter: PlateGuidePainter(landscapeTilt: _tiltRotationAngle == 90 || _tiltRotationAngle == -90)))),
+        Positioned(top: 0, left: 0, right: 0, bottom: 168, child: IgnorePointer(child: CustomPaint(painter: PlateGuidePainter(landscapeTilt: _tiltRotationAngle == 90 || _tiltRotationAngle == -90, withdrawMode: _scanAction == 'withdraw')))),
+        Positioned(
+          top: 12,
+          left: 12,
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(.65),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white24),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              _actionTab('RETURN', 'return', Colors.green),
+              _actionTab('WITHDRAW', 'withdraw', Colors.red),
+            ]),
+          ),
+        ),
         Positioned(top: 12, right: 12, child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(color: Colors.black.withOpacity(.65), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white24)),
@@ -280,9 +378,10 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
 }
 
 class PlateGuidePainter extends CustomPainter {
-  const PlateGuidePainter({required this.landscapeTilt});
+  const PlateGuidePainter({required this.landscapeTilt, required this.withdrawMode});
 
   final bool landscapeTilt;
+  final bool withdrawMode;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -292,26 +391,75 @@ class PlateGuidePainter extends CustomPainter {
     // shape so the on-screen guide is always a wide plate rectangle.
     final logicalPortrait = size.height > size.width;
     final verticalLogicalGuide = logicalPortrait && landscapeTilt;
-    final width = verticalLogicalGuide ? size.width * .36 : size.width * .84;
-    final height = verticalLogicalGuide ? width * 2.7 : width / 2.7;
+    // Scale the landscape guide up uniformly so it is both longer and taller
+    // while preserving the same plate aspect ratio.
+    final width = verticalLogicalGuide ? size.width *.65 : size.width * .8;
+    final height = verticalLogicalGuide ? width * _plateGuideAspectRatio : width / _plateGuideAspectRatio;
     final rect = Rect.fromCenter(center: size.center(Offset.zero), width: width, height: height);
-    final dim = Paint()..color = Colors.black.withOpacity(.45);
+    final dim = Paint()..color = Colors.black.withOpacity(.60);
     canvas.drawRect(Rect.fromLTRB(0, 0, size.width, rect.top), dim);
     canvas.drawRect(Rect.fromLTRB(0, rect.bottom, size.width, size.height), dim);
     canvas.drawRect(Rect.fromLTRB(0, rect.top, rect.left, rect.bottom), dim);
     canvas.drawRect(Rect.fromLTRB(rect.right, rect.top, size.width, rect.bottom), dim);
-    final corner = Paint()..color = Colors.greenAccent..strokeWidth = 4..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
-    const length = 34.0;
+    final corner = Paint()
+      ..color = withdrawMode ? Colors.redAccent : Colors.greenAccent
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    // Give the corner cuts a little more visual room when the phone is tilted
+    // into landscape, while keeping the portrait guide at its current size.
+    final length = landscapeTilt ? 42.0 : 34.0;
     for (final points in [
-      [rect.topLeft, rect.topLeft + const Offset(length, 0), rect.topLeft + const Offset(0, length)],
-      [rect.topRight, rect.topRight + const Offset(-length, 0), rect.topRight + const Offset(0, length)],
-      [rect.bottomLeft, rect.bottomLeft + const Offset(length, 0), rect.bottomLeft + const Offset(0, -length)],
-      [rect.bottomRight, rect.bottomRight + const Offset(-length, 0), rect.bottomRight + const Offset(0, -length)],
+      [rect.topLeft, rect.topLeft + Offset(length, 0), rect.topLeft + Offset(0, length)],
+      [rect.topRight, rect.topRight + Offset(-length, 0), rect.topRight + Offset(0, length)],
+      [rect.bottomLeft, rect.bottomLeft + Offset(length, 0), rect.bottomLeft + Offset(0, -length)],
+      [rect.bottomRight, rect.bottomRight + Offset(-length, 0), rect.bottomRight + Offset(0, -length)],
     ]) {
       canvas.drawLine(points[0], points[1], corner);
       canvas.drawLine(points[0], points[2], corner);
     }
   }
   @override
-  bool shouldRepaint(covariant PlateGuidePainter oldDelegate) => oldDelegate.landscapeTilt != landscapeTilt;
+  bool shouldRepaint(covariant PlateGuidePainter oldDelegate) => oldDelegate.landscapeTilt != landscapeTilt || oldDelegate.withdrawMode != withdrawMode;
+}
+
+class CapturePreviewGuidePainter extends CustomPainter {
+  const CapturePreviewGuidePainter({required this.landscapeTilt, required this.withdrawMode});
+
+  final bool landscapeTilt;
+  final bool withdrawMode;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTRB(
+      size.width * _captureMargin,
+      size.height * _captureMargin,
+      size.width * (1 - _captureMargin),
+      size.height * (1 - _captureMargin),
+    );
+    final dim = Paint()..color = Colors.black.withOpacity(.60);
+    canvas.drawRect(Rect.fromLTRB(0, 0, size.width, rect.top), dim);
+    canvas.drawRect(Rect.fromLTRB(0, rect.bottom, size.width, size.height), dim);
+    canvas.drawRect(Rect.fromLTRB(0, rect.top, rect.left, rect.bottom), dim);
+    canvas.drawRect(Rect.fromLTRB(rect.right, rect.top, size.width, rect.bottom), dim);
+
+    final corner = Paint()
+      ..color = withdrawMode ? Colors.redAccent : Colors.greenAccent
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final length = math.min(rect.width, rect.height) * (landscapeTilt ? .22 : .18);
+    for (final points in [
+      [rect.topLeft, rect.topLeft + Offset(length, 0), rect.topLeft + Offset(0, length)],
+      [rect.topRight, rect.topRight + Offset(-length, 0), rect.topRight + Offset(0, length)],
+      [rect.bottomLeft, rect.bottomLeft + Offset(length, 0), rect.bottomLeft + Offset(0, -length)],
+      [rect.bottomRight, rect.bottomRight + Offset(-length, 0), rect.bottomRight + Offset(0, -length)],
+    ]) {
+      canvas.drawLine(points[0], points[1], corner);
+      canvas.drawLine(points[0], points[2], corner);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CapturePreviewGuidePainter oldDelegate) => oldDelegate.landscapeTilt != landscapeTilt || oldDelegate.withdrawMode != withdrawMode;
 }
