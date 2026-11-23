@@ -12,10 +12,25 @@ class GuardQueueScreen extends StatefulWidget {
   State<GuardQueueScreen> createState() => _GuardQueueScreenState();
 }
 
+class _ServingColors {
+  final Color card;
+  final Color border;
+  final Color accentBackground;
+  final Color accentText;
+
+  const _ServingColors({
+    required this.card,
+    required this.border,
+    required this.accentBackground,
+    required this.accentText,
+  });
+}
+
 class _GuardQueueScreenState extends State<GuardQueueScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   Timer? _timer;
+  Timer? _clockTimer;
   bool _loading = true;
   Map<String, List<Map<String, dynamic>>> _queue = {
     'waiting_in': [],
@@ -29,11 +44,15 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     _tabs = TabController(length: 4, vsync: this);
     _loadQueue();
     _timer = Timer.periodic(const Duration(seconds: 5), (_) => _loadQueue());
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _clockTimer?.cancel();
     _tabs.dispose();
     super.dispose();
   }
@@ -98,6 +117,84 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
           .map((item) => Map<String, dynamic>.from(item))
           .toList()
       : <Map<String, dynamic>>[];
+
+  int _servingElapsedSeconds(String? servingAt) {
+    if (servingAt == null || servingAt.trim().isEmpty) return 0;
+    final value = servingAt.trim().replaceFirst(' ', 'T');
+    DateTime? started;
+    try {
+      if (RegExp(r'(Z|[+-]\d{2}:?\d{2})$').hasMatch(value)) {
+        started = DateTime.parse(value).toUtc();
+      } else {
+        final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?').firstMatch(value);
+        if (match != null) {
+          final manilaWallTime = DateTime.utc(
+            int.parse(match.group(1)!),
+            int.parse(match.group(2)!),
+            int.parse(match.group(3)!),
+            int.parse(match.group(4)!),
+            int.parse(match.group(5)!),
+            int.parse(match.group(6) ?? '0'),
+          );
+          started = manilaWallTime.subtract(const Duration(hours: 8));
+        }
+      }
+    } catch (_) {
+      return 0;
+    }
+    if (started == null) return 0;
+    return DateTime.now().toUtc().difference(started).inSeconds.clamp(0, 1 << 31).toInt();
+  }
+
+  String _servingRuntime(Map<String, dynamic> entry) {
+    final elapsed = _servingElapsedSeconds(entry['serving_at']?.toString());
+    final hours = elapsed ~/ 3600;
+    final minutes = (elapsed % 3600) ~/ 60;
+    final seconds = elapsed % 60;
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  _ServingColors _servingColors(Map<String, dynamic> entry) {
+    final minutes = _servingElapsedSeconds(entry['serving_at']?.toString()) / 60;
+    if (minutes >= 60) {
+      return const _ServingColors(
+        card: Color(0xFFF1D5DE),
+        border: Color(0xFF9F3853),
+        accentBackground: Color(0xFFDFA1B2),
+        accentText: Color(0xFF8F2945),
+      );
+    }
+    if (minutes >= 45) {
+      return const _ServingColors(
+        card: Color(0xFFFEE2E2),
+        border: Color(0xFFEF4444),
+        accentBackground: Color(0xFFFECACA),
+        accentText: Color(0xFFB91C1C),
+      );
+    }
+    if (minutes >= 30) {
+      return const _ServingColors(
+        card: Color(0xFFFFEDD5),
+        border: Color(0xFFF97316),
+        accentBackground: Color(0xFFFED7AA),
+        accentText: Color(0xFFC2410C),
+      );
+    }
+    if (minutes >= 20) {
+      return const _ServingColors(
+        card: Color(0xFFFEF9C3),
+        border: Color(0xFFEAB308),
+        accentBackground: Color(0xFFFEF08A),
+        accentText: Color(0xFFA16207),
+      );
+    }
+    return const _ServingColors(
+      card: Color(0xFFECFDF5),
+      border: Color(0xFFA7F3D0),
+      accentBackground: Color(0xFFD1FAE5),
+      accentText: Color(0xFF047857),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -253,18 +350,19 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                     itemBuilder: (_, index) {
                       final entry = entries[index];
                       final plate = (entry['plate_no'] ?? '-').toString();
+                      final servingColors = serving ? _servingColors(entry) : null;
                       return Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 10),
                           decoration: BoxDecoration(
                               color: serving
-                                  ? const Color(0xFFECFDF5)
+                                  ? servingColors!.card
                                   : index == 0
                                       ? const Color(0xFFEFF6FF)
                                       : const Color(0xFFF8F9FA),
                               border: Border.all(
                                   color: serving
-                                      ? const Color(0xFFA7F3D0)
+                                      ? servingColors!.border
                                       : index == 0
                                           ? const Color(0xFFBFDBFE)
                                           : const Color(0xFFDFE3E8)),
@@ -276,14 +374,14 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                     color: serving
-                                        ? const Color(0xFFD1FAE5)
+                                        ? servingColors!.accentBackground
                                         : index == 0
                                             ? const Color(0xFF3E9AF4)
                                             : const Color(0xFFE5E8EC),
                                     borderRadius: BorderRadius.circular(8)),
                                 child: serving
-                                    ? const Icon(Icons.local_shipping,
-                                        color: Color(0xFF047857), size: 19)
+                                    ? Icon(Icons.local_shipping,
+                                        color: servingColors!.accentText, size: 19)
                                     : Text('${index + 1}'.padLeft(2, '0'),
                                         style: TextStyle(
                                             color: index == 0
@@ -304,13 +402,13 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                       overflow: TextOverflow.ellipsis),
                                   Text(
                                       serving
-                                          ? 'Now serving'
+                                          ? _servingRuntime(entry)
                                           : index == 0
                                               ? 'Next in line'
                                               : 'Waiting',
                                       style: TextStyle(
                                           color: serving
-                                              ? const Color(0xFF047857)
+                                              ? servingColors!.accentText
                                               : index == 0
                                                   ? const Color(0xFF1D4ED8)
                                                   : const Color(0xFF68737B),
@@ -327,10 +425,17 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                           : const Color(0xFF536170),
                                       fontWeight: FontWeight.w900))
                             else
-                              Text((entry['direction'] ?? '').toString(),
-                                  style: const TextStyle(
-                                      color: Color(0xFF047857),
-                                      fontWeight: FontWeight.w900))
+                              Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                      color: servingColors!.accentBackground,
+                                      borderRadius: BorderRadius.circular(6)),
+                                  child: Text(
+                                      (entry['direction'] ?? '').toString(),
+                                      style: TextStyle(
+                                          color: servingColors.accentText,
+                                          fontWeight: FontWeight.w900)))
                           ]));
                     }))
       ]),
