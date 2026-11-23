@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import 'scan_truck_plate_screen.dart';
 
@@ -196,6 +198,105 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     );
   }
 
+  int _activeElapsedSeconds(Map<String, dynamic> entry) {
+    final status = (entry['status'] ?? '').toString();
+    final timestamp = status == 'floating' ? entry['floating_at'] : entry['calling_at'];
+    return _servingElapsedSeconds(timestamp?.toString());
+  }
+
+  String _activeRuntime(Map<String, dynamic> entry) {
+    final elapsed = _activeElapsedSeconds(entry);
+    final hours = elapsed ~/ 3600;
+    final minutes = (elapsed % 3600) ~/ 60;
+    final seconds = elapsed % 60;
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Color _activeRuntimeColor(Map<String, dynamic> entry) {
+    final minutes = _activeElapsedSeconds(entry) / 60;
+    if (minutes >= 45) return const Color(0xFF8F2945);
+    if (minutes >= 30) return const Color(0xFFB91C1C);
+    if (minutes >= 20) return const Color(0xFFC2410C);
+    if (minutes >= 10) return const Color(0xFFA16207);
+    return const Color(0xFF047857);
+  }
+
+  bool _isFirstWaitingEntry(Map<String, dynamic> entry) {
+    final direction = (entry['direction'] ?? '').toString();
+    final queue = direction == 'OUT' ? _queue['waiting_out']! : _queue['waiting_in']!;
+    final firstWaiting = queue.cast<Map<String, dynamic>?>().firstWhere(
+      (item) => (item?['status'] ?? 'waiting').toString() == 'waiting',
+      orElse: () => null,
+    );
+    return firstWaiting != null && firstWaiting['id'] == entry['id'];
+  }
+
+  Future<void> _showStatusOptions(Map<String, dynamic> entry) async {
+    final status = (entry['status'] ?? 'waiting').toString();
+    final isFirstWaiting = _isFirstWaitingEntry(entry);
+    final nextStatus = status == 'calling' ? 'floating' : status == 'waiting' && isFirstWaiting ? 'calling' : null;
+    if (nextStatus == null) return;
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
+            child: Align(alignment: Alignment.centerLeft, child: Text('CHANGE QUEUE STATUS', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+          ),
+          ListTile(
+            leading: const Icon(Icons.campaign, color: Color(0xFF2563EB)),
+            title: const Text('CALLING', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w800)),
+            onTap: status == 'waiting' ? () => Navigator.pop(sheetContext, 'calling') : null,
+          ),
+          if (status == 'calling') ListTile(
+            leading: const Icon(Icons.pause_circle_outline, color: Color(0xFFC2410C)),
+            title: const Text('FLOATING', style: TextStyle(color: Color(0xFFC2410C), fontWeight: FontWeight.w800)),
+            onTap: () => Navigator.pop(sheetContext, 'floating'),
+          ),
+        ]),
+      ),
+    );
+    if (!mounted || selected == null) return;
+
+    final label = selected.toUpperCase();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Confirm $label?'),
+        content: Text('Change plate ${(entry['plate_no'] ?? '-')} to $label?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3E9AF4),
+                  foregroundColor: Colors.white),
+              child: Text(label)),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    try {
+      final user = context.read<AuthProvider>().user;
+      final response = await ApiService.post('/guard/queue/status', token: user?.token, body: {
+        'id': entry['id'],
+        'status': selected,
+        'user_id': user?.id ?? 0,
+      });
+      if (!mounted) return;
+      if (!response.isSuccessCode || response.data['success'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiService.extractMessage(response.data)), backgroundColor: Colors.red.shade700));
+        return;
+      }
+      await _loadQueue();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to update queue status.'), backgroundColor: Colors.red));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -351,18 +452,28 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                       final entry = entries[index];
                       final plate = (entry['plate_no'] ?? '-').toString();
                       final servingColors = serving ? _servingColors(entry) : null;
-                      return Container(
+                      final status = (entry['status'] ?? 'waiting').toString();
+                      final activeStatus = status == 'calling' || status == 'floating';
+                      return GestureDetector(
+                          onTap: !serving && (status == 'waiting' || status == 'calling')
+                              ? () => _showStatusOptions(entry)
+                              : null,
+                          child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 10),
                           decoration: BoxDecoration(
                               color: serving
                                   ? servingColors!.card
+                                  : activeStatus
+                                      ? const Color(0xFFEFF6FF)
                                   : index == 0
                                       ? const Color(0xFFEFF6FF)
                                       : const Color(0xFFF8F9FA),
                               border: Border.all(
                                   color: serving
                                       ? servingColors!.border
+                                      : activeStatus
+                                          ? const Color(0xFFBFDBFE)
                                       : index == 0
                                           ? const Color(0xFFBFDBFE)
                                           : const Color(0xFFDFE3E8)),
@@ -375,6 +486,8 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                 decoration: BoxDecoration(
                                     color: serving
                                         ? servingColors!.accentBackground
+                                        : activeStatus || index == 0
+                                            ? const Color(0xFF3E9AF4)
                                         : index == 0
                                             ? const Color(0xFF3E9AF4)
                                             : const Color(0xFFE5E8EC),
@@ -384,7 +497,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                         color: servingColors!.accentText, size: 19)
                                     : Text('${index + 1}'.padLeft(2, '0'),
                                         style: TextStyle(
-                                            color: index == 0
+                                            color: activeStatus || index == 0
                                                 ? Colors.white
                                                 : const Color(0xFF536170),
                                             fontWeight: FontWeight.w900))),
@@ -403,12 +516,16 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                   Text(
                                       serving
                                           ? _servingRuntime(entry)
+                                          : activeStatus
+                                              ? '${status == 'calling' ? 'Calling' : 'Floating'} - ${_activeRuntime(entry)}'
                                           : index == 0
                                               ? 'Next in line'
                                               : 'Waiting',
                                       style: TextStyle(
                                           color: serving
                                               ? servingColors!.accentText
+                                              : activeStatus
+                                                  ? _activeRuntimeColor(entry)
                                               : index == 0
                                                   ? const Color(0xFF1D4ED8)
                                                   : const Color(0xFF68737B),
@@ -420,7 +537,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                   (entry['direction'] ?? direction ?? '')
                                       .toString(),
                                   style: TextStyle(
-                                      color: index == 0
+                                      color: activeStatus || index == 0
                                           ? const Color(0xFF1D4ED8)
                                           : const Color(0xFF536170),
                                       fontWeight: FontWeight.w900))
@@ -436,7 +553,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                       style: TextStyle(
                                           color: servingColors.accentText,
                                           fontWeight: FontWeight.w900)))
-                          ]));
+                          ])));
                     }))
       ]),
     );
