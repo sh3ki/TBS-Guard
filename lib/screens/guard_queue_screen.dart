@@ -45,7 +45,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
     _loadQueue();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _loadQueue());
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _loadQueue());
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
