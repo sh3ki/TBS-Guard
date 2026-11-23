@@ -265,6 +265,10 @@ class _ScanTruckPlateScreenState extends State<ScanTruckPlateScreen> {
         await _showMessage('Wrong Queue', ApiService.extractMessage(response.data), backgroundColor: Colors.orange.shade700);
         return;
       }
+      if (response.data['not_next_line'] == true) {
+        await _showMessage('Not Next in Line', ApiService.extractMessage(response.data), backgroundColor: Colors.orange.shade700);
+        return;
+      }
       if (!response.isSuccessCode || response.data['success'] != true) {
         await _showMessage('Scan failed', ApiService.extractMessage(response.data));
         return;
