@@ -29,8 +29,10 @@ class _ServingColors {
 }
 
 class _GuardQueueScreenState extends State<GuardQueueScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final TabController _tabs;
+  late final AnimationController _callingPulseController;
+  late final AnimationController _floatingPulseController;
   Timer? _timer;
   Timer? _clockTimer;
   bool _loading = true;
@@ -44,6 +46,8 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
+    _callingPulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..repeat(reverse: true);
+    _floatingPulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat(reverse: true);
     _loadQueue();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _loadQueue());
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -55,6 +59,8 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
   void dispose() {
     _timer?.cancel();
     _clockTimer?.cancel();
+    _callingPulseController.dispose();
+    _floatingPulseController.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -454,7 +460,13 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                       final servingColors = serving ? _servingColors(entry) : null;
                       final status = (entry['status'] ?? 'waiting').toString();
                       final activeStatus = status == 'calling' || status == 'floating';
-                      return GestureDetector(
+                      final isFloating = status == 'floating';
+                      final pulseController = status == 'calling'
+                          ? _callingPulseController
+                          : status == 'floating'
+                              ? _floatingPulseController
+                              : null;
+                      final card = GestureDetector(
                           onTap: !serving && (status == 'waiting' || status == 'calling')
                               ? () => _showStatusOptions(entry)
                               : null,
@@ -464,19 +476,19 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                           decoration: BoxDecoration(
                               color: serving
                                   ? servingColors!.card
-                                  : activeStatus
-                                      ? const Color(0xFFEFF6FF)
-                                  : index == 0
-                                      ? const Color(0xFFEFF6FF)
-                                      : const Color(0xFFF8F9FA),
+                                  : isFloating
+                                      ? const Color(0xFFFFF7ED)
+                                      : activeStatus
+                                          ? const Color(0xFFEFF6FF)
+                                          : const Color(0xFFF8F9FA),
                               border: Border.all(
                                   color: serving
                                       ? servingColors!.border
-                                      : activeStatus
-                                          ? const Color(0xFFBFDBFE)
-                                      : index == 0
-                                          ? const Color(0xFFBFDBFE)
-                                          : const Color(0xFFDFE3E8)),
+                                      : isFloating
+                                          ? const Color(0xFFFDBA74)
+                                          : activeStatus
+                                              ? const Color(0xFFBFDBFE)
+                                              : const Color(0xFFDFE3E8)),
                               borderRadius: BorderRadius.circular(9)),
                           child: Row(children: [
                             Container(
@@ -486,20 +498,22 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                 decoration: BoxDecoration(
                                     color: serving
                                         ? servingColors!.accentBackground
-                                        : activeStatus || index == 0
-                                            ? const Color(0xFF3E9AF4)
-                                        : index == 0
-                                            ? const Color(0xFF3E9AF4)
-                                            : const Color(0xFFE5E8EC),
+                                        : isFloating
+                                            ? const Color(0xFFF97316)
+                                            : activeStatus
+                                                ? const Color(0xFF3E9AF4)
+                                                : const Color(0xFFE5E8EC),
                                     borderRadius: BorderRadius.circular(8)),
                                 child: serving
                                     ? Icon(Icons.local_shipping,
                                         color: servingColors!.accentText, size: 19)
-                                    : Text('${index + 1}'.padLeft(2, '0'),
+                                    : status == 'calling'
+                                        ? const Icon(Icons.campaign, color: Colors.white, size: 20)
+                                        : status == 'floating'
+                                            ? const Icon(Icons.update, color: Colors.white, size: 20)
+                                            : Text('${entry['waiting_number'] ?? index + 1}'.padLeft(2, '0'),
                                         style: TextStyle(
-                                            color: activeStatus || index == 0
-                                                ? Colors.white
-                                                : const Color(0xFF536170),
+                                            color: const Color(0xFF536170),
                                             fontWeight: FontWeight.w900))),
                             const SizedBox(width: 10),
                             Expanded(
@@ -518,16 +532,12 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                           ? _servingRuntime(entry)
                                           : activeStatus
                                               ? '${status == 'calling' ? 'Calling' : 'Floating'} - ${_activeRuntime(entry)}'
-                                          : index == 0
-                                              ? 'Next in line'
-                                              : 'Waiting',
+                                          : 'Waiting',
                                       style: TextStyle(
                                           color: serving
                                               ? servingColors!.accentText
                                               : activeStatus
                                                   ? _activeRuntimeColor(entry)
-                                              : index == 0
-                                                  ? const Color(0xFF1D4ED8)
                                                   : const Color(0xFF68737B),
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700))
@@ -537,9 +547,11 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                   (entry['direction'] ?? direction ?? '')
                                       .toString(),
                                   style: TextStyle(
-                                      color: activeStatus || index == 0
-                                          ? const Color(0xFF1D4ED8)
-                                          : const Color(0xFF536170),
+                                      color: isFloating
+                                          ? const Color(0xFFC2410C)
+                                          : activeStatus
+                                              ? const Color(0xFF1D4ED8)
+                                              : const Color(0xFF536170),
                                       fontWeight: FontWeight.w900))
                             else
                               Container(
@@ -554,6 +566,13 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                           color: servingColors.accentText,
                                           fontWeight: FontWeight.w900)))
                           ])));
+                      if (pulseController == null) return card;
+                      return AnimatedBuilder(
+                          animation: pulseController,
+                          child: card,
+                          builder: (_, child) => Transform.scale(
+                              scale: 1 + pulseController.value * (status == 'calling' ? 0.025 : 0.012),
+                              child: child));
                     }))
       ]),
     );
