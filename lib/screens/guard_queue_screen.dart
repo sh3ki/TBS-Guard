@@ -41,6 +41,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     'waiting_out': [],
     'serving': []
   };
+  int _servingCapacity = 0;
 
   @override
   void initState() {
@@ -77,6 +78,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
           'waiting_out': _entries(data['waiting_out']),
           'serving': _entries(data['serving']),
         };
+        _servingCapacity = int.tryParse('${data['serving_capacity'] ?? 0}') ?? 0;
         _loading = false;
       });
     } catch (_) {
@@ -247,17 +249,23 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
       context: context,
       builder: (sheetContext) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
-            child: Align(alignment: Alignment.centerLeft, child: Text('CHANGE QUEUE STATUS', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'CHANGE QUEUE STATUS - ${(entry['plate_no'] ?? '-').toString()}',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ),
           ),
-          ListTile(
+          if (status == 'waiting') ListTile(
             leading: const Icon(Icons.campaign, color: Color(0xFF2563EB)),
             title: const Text('CALLING', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w800)),
-            onTap: status == 'waiting' ? () => Navigator.pop(sheetContext, 'calling') : null,
+            onTap: () => Navigator.pop(sheetContext, 'calling'),
           ),
           if (status == 'calling') ListTile(
-            leading: const Icon(Icons.pause_circle_outline, color: Color(0xFFC2410C)),
+            leading: const Icon(Icons.update, color: Color(0xFFC2410C)),
             title: const Text('FLOATING', style: TextStyle(color: Color(0xFFC2410C), fontWeight: FontWeight.w800)),
             onTap: () => Navigator.pop(sheetContext, 'floating'),
           ),
@@ -381,11 +389,11 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
   }
 
   Widget _allQueues() => ListView(padding: const EdgeInsets.all(12), children: [
-        _queuePanel('WAITING', _queue['waiting_in']!, false, 'IN'),
+        _queuePanel('WAITING', _queue['waiting_in']!, false, 'IN', parentScroll: true),
         const SizedBox(height: 12),
-        _queuePanel('WAITING', _queue['waiting_out']!, false, 'OUT'),
+        _queuePanel('WAITING', _queue['waiting_out']!, false, 'OUT', parentScroll: true),
         const SizedBox(height: 12),
-        _queuePanel('SERVING', _queue['serving']!, true, null),
+        _queuePanel('SERVING', _queue['serving']!, true, null, parentScroll: true),
       ]);
 
   Widget _singleQueue(String title, List<Map<String, dynamic>> entries,
@@ -396,9 +404,12 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
       );
 
   Widget _queuePanel(String title, List<Map<String, dynamic>> entries,
-      bool serving, String? direction) {
+      bool serving, String? direction, {bool parentScroll = false}) {
     return Container(
-      height: 330,
+      height: parentScroll ? null : 330,
+      constraints: BoxConstraints(
+        minHeight: parentScroll ? 330 : 0,
+      ),
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
@@ -407,7 +418,10 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
             BoxShadow(
                 color: Color(0x14000000), blurRadius: 4, offset: Offset(0, 2))
           ]),
-      child: Column(children: [
+      child: Column(
+          mainAxisSize:
+              parentScroll ? MainAxisSize.min : MainAxisSize.max,
+          children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
@@ -435,14 +449,18 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                       fontWeight: FontWeight.w800)),
               const SizedBox(width: 10),
             ],
-            Text('${entries.length}'.padLeft(2, '0'),
+            Text(
+                serving
+                    ? '${entries.length.toString().padLeft(2, '0')}/${_servingCapacity.toString().padLeft(2, '0')}'
+                    : entries.length.toString().padLeft(2, '0'),
                 style: const TextStyle(
                     color: Colors.white,
                     fontSize: 22,
                     fontWeight: FontWeight.w900))
           ]),
         ),
-        Expanded(
+        Flexible(
+            fit: parentScroll ? FlexFit.loose : FlexFit.tight,
             child: entries.isEmpty
                 ? Center(
                     child: Text(
@@ -451,11 +469,17 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                             color: Color(0xFF68737B),
                             fontWeight: FontWeight.w600)))
                 : ListView.separated(
+                    shrinkWrap: parentScroll,
+                    physics: parentScroll
+                        ? const NeverScrollableScrollPhysics()
+                        : null,
                     padding: const EdgeInsets.all(10),
                     itemCount: entries.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (_, index) {
                       final entry = entries[index];
+                      final firstWaitingIndex = entries.indexWhere(
+                          (item) => (item['status'] ?? 'waiting').toString() == 'waiting');
                       final plate = (entry['plate_no'] ?? '-').toString();
                       final servingColors = serving ? _servingColors(entry) : null;
                       final status = (entry['status'] ?? 'waiting').toString();
@@ -543,16 +567,56 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                           fontWeight: FontWeight.w700))
                                 ])),
                             if (!serving)
-                              Text(
-                                  (entry['direction'] ?? direction ?? '')
-                                      .toString(),
-                                  style: TextStyle(
-                                      color: isFloating
-                                          ? const Color(0xFFC2410C)
-                                          : activeStatus
-                                              ? const Color(0xFF1D4ED8)
-                                              : const Color(0xFF536170),
-                                      fontWeight: FontWeight.w900))
+                              Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if ((status == 'waiting' && index == firstWaitingIndex) ||
+                                        status == 'calling')
+                                      ElevatedButton(
+                                        onPressed: () => _showStatusOptions(entry),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: status == 'waiting'
+                                              ? const Color(0xFF2563EB)
+                                              : const Color(0xFFF97316),
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                          minimumSize: Size.zero,
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                              Icon(
+                                               status == 'waiting' ? Icons.campaign : Icons.update,
+                                              size: 17,
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              status == 'waiting' ? 'CALL' : 'FLOAT',
+                                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    if ((status == 'waiting' && index == firstWaitingIndex) ||
+                                        status == 'calling')
+                                      const SizedBox(width: 12),
+                                    Text(
+                                      (entry['direction'] ?? direction ?? '').toString(),
+                                      style: TextStyle(
+                                          color: isFloating
+                                              ? const Color(0xFFC2410C)
+                                              : activeStatus
+                                                  ? const Color(0xFF1D4ED8)
+                                                  : const Color(0xFF536170),
+                                          fontWeight: FontWeight.w900),
+                                    ),
+                                  ],
+                              )
                             else
                               Container(
                                   padding: const EdgeInsets.symmetric(
