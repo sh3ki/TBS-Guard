@@ -33,6 +33,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
   late final TabController _tabs;
   late final AnimationController _callingPulseController;
   late final AnimationController _floatingPulseController;
+  final ScrollController _allScrollController = ScrollController();
   Timer? _timer;
   Timer? _clockTimer;
   bool _loading = true;
@@ -62,6 +63,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     _clockTimer?.cancel();
     _callingPulseController.dispose();
     _floatingPulseController.dispose();
+    _allScrollController.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -218,6 +220,14 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     final minutes = (elapsed % 3600) ~/ 60;
     final seconds = elapsed % 60;
     return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String _bookingTime(dynamic value) {
+    final text = value?.toString() ?? '';
+    if (text.isEmpty) return '--:--';
+    final match = RegExp(r'(?:T|\s)(\d{2}):(\d{2})').firstMatch(text);
+    if (match != null) return '${match.group(1)}:${match.group(2)}';
+    return '--:--';
   }
 
   Color _activeRuntimeColor(Map<String, dynamic> entry) {
@@ -388,12 +398,18 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     );
   }
 
-  Widget _allQueues() => ListView(padding: const EdgeInsets.all(12), children: [
-        _queuePanel('WAITING', _queue['waiting_in']!, false, 'IN', parentScroll: true),
+  Widget _allQueues() => ListView(
+      controller: _allScrollController,
+      padding: const EdgeInsets.all(12),
+      children: [
+        _queuePanel('WAITING', _queue['waiting_in']!, false, 'IN',
+            parentScroll: true, parentController: _allScrollController),
         const SizedBox(height: 12),
-        _queuePanel('WAITING', _queue['waiting_out']!, false, 'OUT', parentScroll: true),
+        _queuePanel('WAITING', _queue['waiting_out']!, false, 'OUT',
+            parentScroll: true, parentController: _allScrollController),
         const SizedBox(height: 12),
-        _queuePanel('SERVING', _queue['serving']!, true, null, parentScroll: true),
+        _queuePanel('SERVING', _queue['serving']!, true, null,
+            parentScroll: true, parentController: _allScrollController),
       ]);
 
   Widget _singleQueue(String title, List<Map<String, dynamic>> entries,
@@ -404,12 +420,10 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
       );
 
   Widget _queuePanel(String title, List<Map<String, dynamic>> entries,
-      bool serving, String? direction, {bool parentScroll = false}) {
+      bool serving, String? direction,
+      {bool parentScroll = false, ScrollController? parentController}) {
     return Container(
-      height: parentScroll ? null : 330,
-      constraints: BoxConstraints(
-        minHeight: parentScroll ? 330 : 0,
-      ),
+      height: 330,
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
@@ -418,10 +432,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
             BoxShadow(
                 color: Color(0x14000000), blurRadius: 4, offset: Offset(0, 2))
           ]),
-      child: Column(
-          mainAxisSize:
-              parentScroll ? MainAxisSize.min : MainAxisSize.max,
-          children: [
+      child: Column(children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
@@ -459,8 +470,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                     fontWeight: FontWeight.w900))
           ]),
         ),
-        Flexible(
-            fit: parentScroll ? FlexFit.loose : FlexFit.tight,
+        Expanded(
             child: entries.isEmpty
                 ? Center(
                     child: Text(
@@ -468,15 +478,29 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                         style: const TextStyle(
                             color: Color(0xFF68737B),
                             fontWeight: FontWeight.w600)))
-                : ListView.separated(
-                    shrinkWrap: parentScroll,
-                    physics: parentScroll
-                        ? const NeverScrollableScrollPhysics()
-                        : null,
-                    padding: const EdgeInsets.all(10),
-                    itemCount: entries.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) {
+                : NotificationListener<OverscrollNotification>(
+                    onNotification: (notification) {
+                      if (!parentScroll ||
+                          parentController == null ||
+                          !parentController.hasClients ||
+                          notification.metrics.axis != Axis.vertical) {
+                        return false;
+                      }
+                      final position = parentController.position;
+                      final target = (position.pixels + notification.overscroll)
+                          .clamp(position.minScrollExtent, position.maxScrollExtent)
+                          .toDouble();
+                      if (target != position.pixels) {
+                        parentController.jumpTo(target);
+                      }
+                      return true;
+                    },
+                    child: ListView.separated(
+                      physics: const ClampingScrollPhysics(),
+                      padding: const EdgeInsets.all(10),
+                      itemCount: entries.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, index) {
                       final entry = entries[index];
                       final firstWaitingIndex = entries.indexWhere(
                           (item) => (item['status'] ?? 'waiting').toString() == 'waiting');
@@ -570,6 +594,23 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                               Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _bookingTime(entry['booking_time']),
+                                        style: const TextStyle(
+                                          color: Color(0xFF536170),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          fontFeatures: [FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
                                     if ((status == 'waiting' && index == firstWaitingIndex) ||
                                         status == 'calling')
                                       ElevatedButton(
@@ -637,7 +678,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                           builder: (_, child) => Transform.scale(
                               scale: 1 + pulseController.value * (status == 'calling' ? 0.025 : 0.012),
                               child: child));
-                    }))
+                      })))
       ]),
     );
   }
