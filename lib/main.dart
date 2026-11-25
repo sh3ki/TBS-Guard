@@ -71,7 +71,7 @@ class _ManualCaptureWatcherState extends State<ManualCaptureWatcher> {
     if (_checking || _presenting || !mounted || context.read<AuthProvider>().user == null) return;
     _checking = true;
     try {
-      final response = await ApiService.get('/guard/queue/display');
+      final response = await ApiService.get('/guard/queue/display', token: context.read<AuthProvider>().user?.token);
       if (!mounted || !response.isSuccessCode || response.data['data'] is! Map) return;
       final data = Map<String, dynamic>.from(response.data['data'] as Map);
       final pending = data['manual_capture'] is Map ? Map<String, dynamic>.from(data['manual_capture'] as Map) : null;
