@@ -53,12 +53,13 @@ class _ManualCaptureWatcherState extends State<ManualCaptureWatcher> {
   bool _checking = false;
   bool _presenting = false;
   int? _lastRequestId;
+  DateTime? _lastHeartbeat;
 
   @override
   void initState() {
     super.initState();
     _checkManualCapture();
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _checkManualCapture());
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _checkManualCapture());
   }
 
   @override
@@ -68,10 +69,16 @@ class _ManualCaptureWatcherState extends State<ManualCaptureWatcher> {
   }
 
   Future<void> _checkManualCapture() async {
-    if (_checking || _presenting || !mounted || context.read<AuthProvider>().user == null) return;
+    if (_checking || !mounted || context.read<AuthProvider>().user == null) return;
     _checking = true;
     try {
-      final response = await ApiService.get('/guard/queue/display', token: context.read<AuthProvider>().user?.token);
+      final user = context.read<AuthProvider>().user;
+      if (user != null && (_lastHeartbeat == null || DateTime.now().difference(_lastHeartbeat!).inSeconds >= 60)) {
+        await ApiService.post('/guard/presence', token: user.token);
+        _lastHeartbeat = DateTime.now();
+      }
+      if (_presenting) return;
+      final response = await ApiService.get('/guard/queue/display', token: user?.token);
       if (!mounted || !response.isSuccessCode || response.data['data'] is! Map) return;
       final data = Map<String, dynamic>.from(response.data['data'] as Map);
       final pending = data['manual_capture'] is Map ? Map<String, dynamic>.from(data['manual_capture'] as Map) : null;
