@@ -30,6 +30,9 @@ class _ManualCaptureScreenState extends State<ManualCaptureScreen> {
   int? _tiltRotationAngle;
   bool _initializing = true;
   bool _capturing = false;
+  bool _checkingRequest = false;
+  bool _requestInvalidated = false;
+  Timer? _requestStatusTimer;
   String? _error;
 
   @override
@@ -38,14 +41,38 @@ class _ManualCaptureScreenState extends State<ManualCaptureScreen> {
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     _startOrientationTracking();
     _initializeCamera();
+    _verifyManualRequest();
+    _requestStatusTimer = Timer.periodic(const Duration(seconds: 3), (_) => _verifyManualRequest());
   }
 
   @override
   void dispose() {
     _accelerometerSubscription?.cancel();
+    _requestStatusTimer?.cancel();
     _controller?.dispose();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     super.dispose();
+  }
+
+  Future<void> _verifyManualRequest() async {
+    if (_checkingRequest || _requestInvalidated || !mounted) return;
+    _checkingRequest = true;
+    try {
+      final response = await ApiService.get('/guard/queue/display', token: context.read<AuthProvider>().user?.token);
+      if (!mounted || !response.isSuccessCode) return;
+      final data = response.data['data'];
+      final pending = data is Map && data['manual_capture'] is Map ? Map<String, dynamic>.from(data['manual_capture'] as Map) : null;
+      final pendingId = int.tryParse('${pending?['id'] ?? ''}');
+      if (pendingId == widget.queueEntryId) return;
+
+      _requestInvalidated = true;
+      await _showMessage('Manual capture cancelled', 'This plate is no longer in the active queue.');
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      // Keep the capture screen open during temporary network failures.
+    } finally {
+      _checkingRequest = false;
+    }
   }
 
   void _startOrientationTracking() {
