@@ -20,6 +20,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final Future<String> _installedVersionFuture;
   bool _needsPermissions = false;
+  bool _hasCallingEntry = false;
   Map<Permission, PermissionStatus> _statuses = {};
 
   @override
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _installedVersionFuture = AppUpdateService.getInstalledVersion();
     _checkPermissions();
+    _loadScanAvailability();
   }
 
   @override
@@ -38,7 +40,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _checkPermissions();
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+      _loadScanAvailability();
+    }
   }
 
   Future<void> _checkPermissions() async {
@@ -61,6 +66,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _needsPermissions =
           !(camera.isGranted && microphone.isGranted && fileAccess);
     });
+  }
+
+  Future<void> _loadScanAvailability() async {
+    try {
+      final user = context.read<AuthProvider>().user;
+      final response = await ApiService.get('/guard/queue/display', token: user?.token);
+      if (!mounted || !response.isSuccessCode || response.data['success'] != true) return;
+      final data = Map<String, dynamic>.from(response.data['data'] as Map);
+      final waitingIn = (data['waiting_in'] as List? ?? const []).whereType<Map>();
+      final waitingOut = (data['waiting_out'] as List? ?? const []).whereType<Map>();
+      final hasCalling = [...waitingIn, ...waitingOut].any((entry) => entry['status']?.toString() == 'calling');
+      setState(() => _hasCallingEntry = hasCalling);
+    } catch (_) {
+      if (mounted) setState(() => _hasCallingEntry = false);
+    }
   }
 
   Future<void> _requestPermissions() async {
@@ -274,8 +294,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     icon: Icons.qr_code_scanner,
                     label: 'SCAN TRUCK PLATE',
                     subtitle: 'Scan a truck plate number',
-                    color: const Color(0xFF4CAF50),
-                    onPressed: _openScanScreen,
+                    color: _hasCallingEntry ? const Color(0xFF4CAF50) : const Color(0xFF9CA3AF),
+                    onPressed: _hasCallingEntry ? _openScanScreen : null,
                   ),
                 ],
               ),
@@ -309,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     required String label,
     required String subtitle,
     required Color color,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return Material(
       color: Colors.transparent,
