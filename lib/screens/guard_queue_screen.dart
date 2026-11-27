@@ -262,7 +262,10 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
 
   bool get _hasCallingEntry => _queue.values
       .expand((entries) => entries)
-      .any((entry) => (entry['status'] ?? '').toString() == 'calling');
+      .any((entry) {
+        final status = (entry['status'] ?? '').toString();
+        return status == 'calling' || status == 'floating';
+      });
 
   Future<void> _showStatusOptions(Map<String, dynamic> entry) async {
     final status = (entry['status'] ?? 'waiting').toString();
@@ -356,6 +359,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
       final details = Map<String, dynamic>.from(response.data['data'] as Map);
       final status = (entry['status'] ?? 'waiting').toString();
       final isFirstCalling = status == 'calling' && _isFirstCallingEntry(entry);
+      final isScanEligible = isFirstCalling || status == 'floating';
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -385,7 +389,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
             ),
           ),
           actions: [
-            if (isFirstCalling)
+            if (isScanEligible)
               ElevatedButton.icon(
                 onPressed: () async {
                   Navigator.of(dialogContext).pop();
@@ -619,6 +623,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                       final isStandby = status == 'standby';
                       final isFloating = status == 'floating';
                       final isFirstCalling = status == 'calling' && _isFirstCallingEntry(entry);
+                      final isScanEligible = isFirstCalling || isFloating;
                       final pulseController = status == 'calling'
                           ? _callingPulseController
                           : status == 'floating' || status == 'standby'
@@ -750,7 +755,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                               Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    if (isFirstCalling)
+                                    if (isScanEligible)
                                       ElevatedButton.icon(
                                         onPressed: () => _showEntryDetails(entry),
                                         icon: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 17),
@@ -765,7 +770,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                                         ),
                                       ),
-                                    if (isFirstCalling) const SizedBox(width: 12),
+                                    if (isScanEligible) const SizedBox(width: 12),
                                     Text(
                                       _sizeType(entry),
                                       style: TextStyle(
