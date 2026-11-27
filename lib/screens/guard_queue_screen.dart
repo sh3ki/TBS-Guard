@@ -215,7 +215,11 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
 
   int _activeElapsedSeconds(Map<String, dynamic> entry) {
     final status = (entry['status'] ?? '').toString();
-    final timestamp = status == 'floating' ? entry['floating_at'] : entry['calling_at'];
+    final timestamp = status == 'floating'
+        ? entry['floating_at']
+        : status == 'standby'
+            ? entry['standby_at']
+            : entry['calling_at'];
     return _servingElapsedSeconds(timestamp?.toString());
   }
 
@@ -693,26 +697,54 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                           fontSize: 18,
                                           fontWeight: FontWeight.w800),
                                       overflow: TextOverflow.ellipsis),
-                                  Text(
-                                      serving
-                                          ? _servingRuntime(entry)
-                                          : isStandby
-                                              ? 'Stand By'
-                                          : activeStatus
-                                              ? '${status == 'calling' ? 'Calling' : 'Floating'} - ${_activeRuntime(entry)}'
-                                          : 'Waiting',
-                                      style: TextStyle(
-                                          color: serving
-                                              ? servingColors!.accentText
-                                              : isStandby
-                                                  ? const Color(0xFFA16207)
-                                              : isFirstCalling
-                                                  ? const Color(0xFF047857)
-                                              : activeStatus
-                                                  ? _activeRuntimeColor(entry)
-                                                  : const Color(0xFF68737B),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700))
+                                  serving
+                                      ? Text(
+                                          _servingRuntime(entry),
+                                          style: TextStyle(
+                                            color: servingColors!.accentText,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        )
+                                      : Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                isStandby
+                                                    ? 'Stand By - ${_activeRuntime(entry)}'
+                                                    : activeStatus
+                                                        ? '${status == 'calling' ? 'Calling' : 'Floating'} - ${_activeRuntime(entry)}'
+                                                        : 'Waiting',
+                                                style: TextStyle(
+                                                  color: isStandby
+                                                      ? _activeRuntimeColor(entry)
+                                                      : isFirstCalling
+                                                          ? const Color(0xFF047857)
+                                                          : activeStatus
+                                                              ? _activeRuntimeColor(entry)
+                                                              : const Color(0xFF68737B),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                            if (isStandby && entry['standby_code'] != null && entry['standby_code'].toString().isNotEmpty) ...[
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFFEF9C3),
+                                                  borderRadius: BorderRadius.circular(5),
+                                                ),
+                                                child: Text(
+                                                  entry['standby_code'].toString(),
+                                                  style: const TextStyle(color: Color(0xFFA16207), fontSize: 11, fontWeight: FontWeight.w900),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        )
                                 ])),
                             if (!serving)
                               Row(
