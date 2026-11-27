@@ -76,7 +76,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final data = Map<String, dynamic>.from(response.data['data'] as Map);
       final waitingIn = (data['waiting_in'] as List? ?? const []).whereType<Map>();
       final waitingOut = (data['waiting_out'] as List? ?? const []).whereType<Map>();
-      final hasCalling = [...waitingIn, ...waitingOut].any((entry) => entry['status']?.toString() == 'calling');
+      final hasCalling = [...waitingIn, ...waitingOut].any((entry) {
+        final status = entry['status']?.toString();
+        return status == 'calling' || status == 'floating';
+      });
       setState(() => _hasCallingEntry = hasCalling);
     } catch (_) {
       if (mounted) setState(() => _hasCallingEntry = false);
