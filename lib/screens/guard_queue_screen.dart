@@ -246,6 +246,20 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
     return firstWaiting != null && firstWaiting['id'] == entry['id'];
   }
 
+  bool _isFirstCallingEntry(Map<String, dynamic> entry) {
+    final direction = (entry['direction'] ?? '').toString();
+    final queue = direction == 'OUT' ? _queue['waiting_out']! : _queue['waiting_in']!;
+    final firstCalling = queue.cast<Map<String, dynamic>?>().firstWhere(
+      (item) => (item?['status'] ?? '').toString() == 'calling',
+      orElse: () => null,
+    );
+    return firstCalling != null && firstCalling['id'] == entry['id'];
+  }
+
+  bool get _hasCallingEntry => _queue.values
+      .expand((entries) => entries)
+      .any((entry) => (entry['status'] ?? '').toString() == 'calling');
+
   Future<void> _showStatusOptions(Map<String, dynamic> entry) async {
     final status = (entry['status'] ?? 'waiting').toString();
     final isFirstWaiting = _isFirstWaitingEntry(entry);
@@ -337,9 +351,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
 
       final details = Map<String, dynamic>.from(response.data['data'] as Map);
       final status = (entry['status'] ?? 'waiting').toString();
-      final canChangeStatus = (status == 'waiting' && _isFirstWaitingEntry(entry)) || status == 'calling';
-      final nextLabel = status == 'waiting' ? 'CALLING' : 'FLOATING';
-      final nextColor = status == 'waiting' ? const Color(0xFF2563EB) : const Color(0xFFF97316);
+      final isFirstCalling = status == 'calling' && _isFirstCallingEntry(entry);
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -369,15 +381,20 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
             ),
           ),
           actions: [
-            if (canChangeStatus)
+            if (isFirstCalling)
               ElevatedButton.icon(
                 onPressed: () async {
                   Navigator.of(dialogContext).pop();
-                  await _showStatusOptions(entry);
+                  await _openScanScreen();
                 },
-                icon: Icon(status == 'waiting' ? Icons.campaign : Icons.update, size: 18),
-                label: Text(nextLabel),
-                style: ElevatedButton.styleFrom(backgroundColor: nextColor, foregroundColor: Colors.white),
+                icon: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 18),
+                label: const Text('SCAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                ),
               ),
           ],
         ),
@@ -418,7 +435,7 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
             padding: const EdgeInsets.only(right: 10),
             child: Center(
               child: ElevatedButton.icon(
-                onPressed: _openScanScreen,
+                onPressed: _hasCallingEntry ? _openScanScreen : null,
                 icon: const Icon(Icons.qr_code_scanner,
                     color: Colors.white, size: 18),
                 label: const Text('SCAN',
@@ -560,11 +577,27 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
             fit: parentScroll ? FlexFit.loose : FlexFit.tight,
             child: entries.isEmpty
                 ? Center(
-                    child: Text(
-                        serving ? 'No trucks being served' : 'Queue is empty',
-                        style: const TextStyle(
-                            color: Color(0xFF68737B),
-                            fontWeight: FontWeight.w600)))
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            serving ? Icons.local_shipping_outlined : Icons.format_list_bulleted,
+                            size: 38,
+                            color: serving ? const Color(0xFF68737B) : const Color(0xFF3E9AF4),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            serving ? 'No trucks being served' : 'Queue is empty',
+                            style: const TextStyle(
+                                color: Color(0xFF68737B),
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
                 : ListView.separated(
                     shrinkWrap: parentScroll,
                     physics: parentScroll
@@ -579,10 +612,12 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                       final servingColors = serving ? _servingColors(entry) : null;
                       final status = (entry['status'] ?? 'waiting').toString();
                       final activeStatus = status == 'calling' || status == 'floating';
+                      final isStandby = status == 'standby';
                       final isFloating = status == 'floating';
+                      final isFirstCalling = status == 'calling' && _isFirstCallingEntry(entry);
                       final pulseController = status == 'calling'
                           ? _callingPulseController
-                          : status == 'floating'
+                          : status == 'floating' || status == 'standby'
                               ? _floatingPulseController
                               : null;
                       final card = GestureDetector(
@@ -593,16 +628,24 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                           decoration: BoxDecoration(
                               color: serving
                                   ? servingColors!.card
-                                  : isFloating
+                                      : isStandby
+                                          ? const Color(0xFFFEFCE8)
+                                      : isFloating
                                       ? const Color(0xFFFFF7ED)
+                                      : isFirstCalling
+                                          ? const Color(0xFFECFDF5)
                                       : activeStatus
                                           ? const Color(0xFFEFF6FF)
                                           : const Color(0xFFF8F9FA),
                               border: Border.all(
                                   color: serving
                                       ? servingColors!.border
+                                      : isStandby
+                                          ? const Color(0xFFFACC15)
                                       : isFloating
                                           ? const Color(0xFFFDBA74)
+                                          : isFirstCalling
+                                              ? const Color(0xFF6EE7B7)
                                           : activeStatus
                                               ? const Color(0xFFBFDBFE)
                                               : const Color(0xFFDFE3E8)),
@@ -615,8 +658,12 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                 decoration: BoxDecoration(
                                     color: serving
                                         ? servingColors!.accentBackground
-                                        : isFloating
+                                            : isStandby
+                                                ? const Color(0xFFFACC15)
+                                            : isFloating
                                             ? const Color(0xFFF97316)
+                                            : isFirstCalling
+                                                ? const Color(0xFF10B981)
                                             : activeStatus
                                                 ? const Color(0xFF3E9AF4)
                                                 : const Color(0xFFE5E8EC),
@@ -624,6 +671,8 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                 child: serving
                                     ? Icon(Icons.local_shipping,
                                         color: servingColors!.accentText, size: 19)
+                                    : status == 'standby'
+                                        ? const Icon(Icons.pause, color: Colors.white, size: 20)
                                     : status == 'calling'
                                         ? const Icon(Icons.campaign, color: Colors.white, size: 20)
                                         : status == 'floating'
@@ -647,12 +696,18 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                   Text(
                                       serving
                                           ? _servingRuntime(entry)
+                                          : isStandby
+                                              ? 'Stand By'
                                           : activeStatus
                                               ? '${status == 'calling' ? 'Calling' : 'Floating'} - ${_activeRuntime(entry)}'
                                           : 'Waiting',
                                       style: TextStyle(
                                           color: serving
                                               ? servingColors!.accentText
+                                              : isStandby
+                                                  ? const Color(0xFFA16207)
+                                              : isFirstCalling
+                                                  ? const Color(0xFF047857)
                                               : activeStatus
                                                   ? _activeRuntimeColor(entry)
                                                   : const Color(0xFF68737B),
@@ -663,13 +718,13 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                               Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    if ((status == 'waiting' && _isFirstWaitingEntry(entry)) || status == 'calling')
-                                      ElevatedButton(
+                                    if (isFirstCalling)
+                                      ElevatedButton.icon(
                                         onPressed: () => _showEntryDetails(entry),
+                                        icon: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 17),
+                                        label: const Text('SCAN', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: status == 'waiting'
-                                              ? const Color(0xFF2563EB)
-                                              : const Color(0xFFF97316),
+                                          backgroundColor: _hasCallingEntry ? const Color(0xFF4CAF50) : const Color(0xFF9CA3AF),
                                           foregroundColor: Colors.white,
                                           elevation: 0,
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -677,24 +732,20 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                                         ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(status == 'waiting' ? Icons.campaign : Icons.update, size: 17),
-                                            const SizedBox(width: 3),
-                                            Text(status == 'waiting' ? 'CALL' : 'FLOAT', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
-                                          ],
-                                        ),
                                       ),
-                                    if ((status == 'waiting' && _isFirstWaitingEntry(entry)) || status == 'calling') const SizedBox(width: 12),
+                                    if (isFirstCalling) const SizedBox(width: 12),
                                     Text(
                                       _sizeType(entry),
                                       style: TextStyle(
-                                          color: isFloating
-                                              ? const Color(0xFFC2410C)
-                                              : activeStatus
-                                                  ? const Color(0xFF1D4ED8)
-                                                  : const Color(0xFF536170),
+                                          color: isStandby
+                                              ? const Color(0xFFA16207)
+                                              : isFloating
+                                                  ? const Color(0xFFC2410C)
+                                                  : isFirstCalling
+                                                      ? const Color(0xFF047857)
+                                                  : activeStatus
+                                                      ? const Color(0xFF1D4ED8)
+                                                      : const Color(0xFF536170),
                                           fontSize: 12,
                                           fontWeight: FontWeight.w900),
                                     ),
@@ -702,21 +753,29 @@ class _GuardQueueScreenState extends State<GuardQueueScreen>
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: isFloating
-                                            ? const Color(0xFFFFEDD5)
-                                            : activeStatus
-                                                ? const Color(0xFFDBEAFE)
-                                                : const Color(0xFFE5E8EC),
+                                        color: isStandby
+                                            ? const Color(0xFFFEF9C3)
+                                            : isFloating
+                                                ? const Color(0xFFFFEDD5)
+                                                : isFirstCalling
+                                                    ? const Color(0xFFD1FAE5)
+                                                    : activeStatus
+                                                        ? const Color(0xFFDBEAFE)
+                                                        : const Color(0xFFE5E8EC),
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
                                         (entry['direction'] ?? direction ?? '').toString(),
                                         style: TextStyle(
-                                            color: isFloating
-                                                ? const Color(0xFFC2410C)
-                                                : activeStatus
-                                                    ? const Color(0xFF1D4ED8)
-                                                    : const Color(0xFF536170),
+                                            color: isStandby
+                                                ? const Color(0xFFA16207)
+                                                : isFloating
+                                                    ? const Color(0xFFC2410C)
+                                                    : isFirstCalling
+                                                        ? const Color(0xFF047857)
+                                                        : activeStatus
+                                                            ? const Color(0xFF1D4ED8)
+                                                            : const Color(0xFF536170),
                                             fontSize: 14,
                                             fontWeight: FontWeight.w900),
                                       ),
